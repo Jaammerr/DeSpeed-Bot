@@ -1,0 +1,63 @@
+# ═══════════════════════════════════════════════════════════════════════════
+#                           APPLICATION CONFIGURATION
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+application_settings:
+  threads: 10 # number of threads, for farming, calculate approximately like this: for 100 accounts, 10 threads will be enough, since the delay between test speeds is 2 hours
+  database_url: "sqlite://./database.sqlite3" # SQlite or postgres, e.g. sqlite://database.db or postgres://user:password@localhost/dbname
+  skip_logged_accounts: true
+  shuffle_accounts: true # shuffle accounts before starting the module
+  check_uniqueness_of_proxies: true
+  gen_random_pass_for_accounts: true
+  auto_claim_daily_reward: true
+
+
+attempts_and_delay_settings:
+  delay_before_start: # random delay before starting the module for each account
+    min: 20 # in seconds
+    max: 60 # in seconds
+
+  error_delay: 5 # in seconds
+  max_register_attempts: 10
+  max_login_attempts: 3
+  max_stats_attempts: 3
+  max_tasks_attempts: 3
+  max_verify_attempts: 3
+  max_captcha_attempts: 10
+  max_farm_attempts: 3
+  max_daily_reward_attempts: 3
+
+
+captcha_settings:
+  solvium_captcha_api_key: "" # @solvium_crypto_bot
+  max_captcha_solving_time: 180  # in seconds
+
+
+redirect_settings:
+  enabled: false
+  email: ""
+  password: ""
+  imap_server: ""
+
+
+imap_settings:
+  use_proxy_for_imap: false
+
+  use_single_imap:
+    enable: false
+    imap_server: "imap.gmail.com"
+
+  servers:
+    gmail.com: imap.gmail.com
+    yahoo.com: imap.mail.yahoo.com
+    icloud.com: imap.mail.me.com
+    mail.ru: imap.mail.ru
+    gmx.com: imap.gmx.com
+    gmx.net: imap.gmx.net
+    gmx.de: imap.gmx.net
+    onet.pl: imap.poczta.onet.pl
+    onet.com.pl: imap.poczta.onet.pl
+    op.pl: imap.poczta.onet.pl
+    onet.eu: imap.poczta.onet.pl
+    gazeta.pl: imap.gazeta.pl

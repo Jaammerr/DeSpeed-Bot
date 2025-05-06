@@ -16,8 +16,7 @@ class SolviumCaptchaSolver:
         self.base_url = base_url.rstrip("/")
         self.client = httpx.AsyncClient(
             headers={"Authorization": f"Bearer {self.api_key}"},
-            timeout=30,
-            proxy="http://jaammer_dev_gmail_com-country-au-sid-eec9ad2543444-filter-medium:ko9404tn4i@gate.nodemaven.com:8080"
+            timeout=30
         )
 
     async def create_noname_task(self, site_key: str, page_url: str) -> tuple[bool, Any] | tuple[bool, str]:

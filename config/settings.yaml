@@ -4,7 +4,7 @@
 
 
 application_settings:
-  threads: 10 # number of threads, for farming, calculate approximately like this: for 100 accounts, 10 threads will be enough, since the delay between test speeds is 2 hours
+  threads: 5 # number of threads, for farming, calculate approximately like this: for 100 accounts, 10 threads will be enough, since the delay between test speeds is 2 hours
   database_url: "sqlite://./database.sqlite3" # SQlite or postgres, e.g. sqlite://database.db or postgres://user:password@localhost/dbname
   skip_logged_accounts: true
   shuffle_accounts: true # shuffle accounts before starting the module
@@ -15,7 +15,7 @@ application_settings:
 
 attempts_and_delay_settings:
   delay_before_start: # random delay before starting the module for each account
-    min: 20 # in seconds
+    min: 30 # in seconds
     max: 60 # in seconds
 
   error_delay: 5 # in seconds
@@ -30,8 +30,12 @@ attempts_and_delay_settings:
 
 
 captcha_settings:
-  solvium_captcha_api_key: "" # @solvium_crypto_bot
-  max_captcha_solving_time: 180  # in seconds
+  solvium_captcha_api_key: ""
+  two_captcha_api_key: ""
+  anti_captcha_api_key: ""
+
+  captcha_solver: "solvium" # solvium, 2captcha, anticaptcha
+  max_captcha_solving_time: 180 # in seconds
 
 
 redirect_settings:

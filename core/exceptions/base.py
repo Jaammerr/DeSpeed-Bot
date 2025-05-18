@@ -5,6 +5,8 @@ class APIErrorType(Enum):
     UNVERIFIED_EMAIL = "Please verify your email to log in"
     ALREADY_REGISTERED = "Email is already in use."
     INVALID_CAPTCHA = "Captcha validation failed, please try again!"
+    TOKEN_EXPIRED = "Token expired."
+    DOMAIN_BLOCKED = "You are blocked from registering."
 
 
 class APIError(Exception):

@@ -29,6 +29,10 @@ class Account(BaseConfig):
 @dataclass
 class CaptchaSettings:
     solvium_captcha_api_key: str = ""
+    two_captcha_api_key: str = ""
+    anti_captcha_api_key: str = ""
+
+    captcha_solver: str = ""
     max_captcha_solving_time: PositiveInt = 60
 
 

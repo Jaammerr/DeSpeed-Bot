@@ -3,6 +3,8 @@ import httpx
 
 from typing import Any
 
+from loguru import logger
+
 
 class SolviumCaptchaSolver:
     def __init__(

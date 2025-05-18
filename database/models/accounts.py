@@ -1,6 +1,5 @@
 import asyncio
 import pytz
-
 from datetime import datetime
 from tortoise import Model, fields
 
@@ -9,11 +8,12 @@ class Accounts(Model):
     email = fields.CharField(max_length=255, unique=True)
     account_password = fields.CharField(max_length=255, null=True)
     access_token = fields.CharField(max_length=2048, null=True)
+    refresh_token = fields.CharField(max_length=2048, null=True)
     active_account_proxy = fields.CharField(max_length=255, null=True)
     sleep_until = fields.DatetimeField(null=True)
 
     class Meta:
-        table = "despeed_accounts"
+        table = "despeed_accounts_"
 
     @classmethod
     async def get_account(cls, email: str):
@@ -59,6 +59,7 @@ class Accounts(Model):
         email: str,
         account_password: str = None,
         access_token: str = None,
+        refresh_token: str = None,
         proxy: str = None
     ) -> "Accounts":
         account = await cls.get_account(email=email)
@@ -67,6 +68,7 @@ class Accounts(Model):
                 email=email,
                 account_password=account_password,
                 access_token=access_token,
+                refresh_token=refresh_token,
                 active_account_proxy=proxy
             )
         else:
@@ -74,6 +76,8 @@ class Accounts(Model):
                 account.account_password = account_password
             if access_token is not None:
                 account.access_token = access_token
+            if refresh_token is not None:
+                account.refresh_token = refresh_token
             if proxy is not None:
                 account.active_account_proxy = proxy
             await account.save()
@@ -84,12 +88,15 @@ class Accounts(Model):
         self,
         account_password: str = None,
         access_token: str = None,
+        refresh_token: str = None,
         proxy: str = None
     ) -> "Accounts":
         if account_password is not None:
             self.account_password = account_password
         if access_token is not None:
             self.access_token = access_token
+        if refresh_token is not None:
+            self.refresh_token = refresh_token
         if proxy is not None:
             self.active_account_proxy = proxy
 
@@ -100,6 +107,11 @@ class Accounts(Model):
     async def get_access_token(cls, email: str) -> str | None:
         account = await cls.get_account(email=email)
         return account.access_token if account else None
+
+    @classmethod
+    async def get_refresh_token(cls, email: str) -> str | None:
+        account = await cls.get_account(email=email)
+        return account.refresh_token if account else None
 
     @classmethod
     async def delete_account(cls, email: str) -> bool:

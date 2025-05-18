@@ -1,6 +1,6 @@
 import asyncio
 import random
-from typing import Optional, Literal
+from typing import Optional, Literal, Any, Coroutine
 
 from loguru import logger
 from better_proxy import Proxy
@@ -164,13 +164,23 @@ class Bot:
             referral_code=referral_code
         )
 
-    async def _login_account(self, api: DespeedAPI) -> str:
+    async def _login_account(self, api: DespeedAPI) -> tuple[str, str]:
         hcaptcha_token = await self.get_hcaptcha_token()
         return await api.login(
             email_or_username=self.account_data.email,
             password=self.account_data.account_password,
             hcaptcha_token=hcaptcha_token
         )
+
+    async def _refresh_token(self, db_account_value: Accounts, api: DespeedAPI) -> bool:
+        try:
+            access_token, refresh_token = await api.refresh_token(db_account_value.refresh_token)
+            await db_account_value.update_account(access_token=access_token, refresh_token=refresh_token)
+            return True
+
+        except Exception as error:
+            logger.error(f"Account: {self.account_data.email} | Error occurred while refreshing token: {error}")
+            return False
 
     @staticmethod
     async def _prepare_account_proxy(db_account_value: Accounts) -> str:
@@ -184,11 +194,12 @@ class Bot:
 
         return proxy.as_url if isinstance(proxy, Proxy) else proxy
 
-    async def _save_account(self, db_account_value: Accounts, proxy: str, access_token: str) -> None:
+    async def _save_account(self, db_account_value: Accounts, proxy: str, access_token: str, refresh_token: str) -> None:
         if db_account_value:
             await db_account_value.update_account(
                 account_password=self.account_data.account_password,
                 access_token=access_token,
+                refresh_token=refresh_token,
                 proxy=proxy
             )
         else:
@@ -196,6 +207,7 @@ class Bot:
                 email=self.account_data.email,
                 account_password=self.account_data.account_password,
                 access_token=access_token,
+                refresh_token=refresh_token,
                 active_account_proxy=proxy
             )
 
@@ -238,13 +250,13 @@ class Bot:
                 if last_completed_action == "confirmation_code":
                     logger.info(f"Account: {self.account_data.email} | Registration verified and completed, logging in..")
                     hcaptcha_token = await self.get_hcaptcha_token()
-                    access_token = await api.login(
+                    access_token, refresh_token = await api.login(
                         email_or_username=self.account_data.email,
                         password=self.account_data.account_password,
                         hcaptcha_token=hcaptcha_token
                     )
 
-                await self._save_account(db_account_value, proxy, access_token)
+                await self._save_account(db_account_value, proxy, access_token, refresh_token)
                 logger.success(f"Account: {self.account_data.email} | Logged in | Session saved to database")
                 return operation_success(self.account_data.email, f"{self.account_data.password}:{self.account_data.account_password}")
 
@@ -257,6 +269,11 @@ class Bot:
                     logger.error(f"Account: {self.account_data.email} | Invalid captcha | Attempt: {attempt + 1}/{max_attempts} | Retrying in {config.attempts_and_delay_settings.error_delay} seconds")
                     await asyncio.sleep(config.attempts_and_delay_settings.error_delay)
                     continue
+
+                elif error.error_type == APIErrorType.DOMAIN_BLOCKED:
+                    domain = self.account_data.email.split("@")[1]
+                    logger.error(f"Account: {self.account_data.email} | Most likely domain <<{domain}>> is blocked | Skipped permanently")
+                    return operation_failed(self.account_data.email, self.account_data.password)
 
                 if last_completed_action in ("registration", "confirmation_code"):
                     logger.warning(f"Account: {self.account_data.email} | Email registered but not verified, error: {error} | Exported to <<unverified_accounts.txt>>")
@@ -297,7 +314,7 @@ class Bot:
         max_attempts = config.attempts_and_delay_settings.max_verify_attempts
 
         for attempt in range(max_attempts):
-            db_account_value, last_completed_action, api, access_token = None, None, None, None
+            db_account_value, last_completed_action, api, access_token, refresh_token = None, None, None, None, None
 
             try:
                 db_account_value = await Accounts.get_account(email=self.account_data.email)
@@ -325,13 +342,13 @@ class Bot:
                 if last_completed_action == "confirmation_code":
                     logger.info(f"Account: {self.account_data.email} | Email verified, logging in..")
                     hcaptcha_token = await self.get_hcaptcha_token()
-                    access_token = await api.login(
+                    access_token, refresh_token = await api.login(
                         email_or_username=self.account_data.email,
                         password=self.account_data.account_password,
                         hcaptcha_token=hcaptcha_token
                     )
 
-                await self._save_account(db_account_value, proxy, access_token)
+                await self._save_account(db_account_value, proxy, access_token, refresh_token)
                 logger.success(f"Account: {self.account_data.email} | Logged in | Session saved to database")
                 return operation_success(self.account_data.email, f"{self.account_data.password}:{self.account_data.account_password}")
 
@@ -393,8 +410,8 @@ class Bot:
                 proxy = await self._prepare_account_proxy(db_account_value)
                 api = DespeedAPI(proxy=proxy)
 
-                access_token = await self._login_account(api=api)
-                await self._save_account(db_account_value, proxy, access_token)
+                access_token, refresh_token = await self._login_account(api=api)
+                await self._save_account(db_account_value, proxy, access_token, refresh_token)
 
                 logger.success(f"Account: {self.account_data.email} | Logged in | Session saved to database")
                 return operation_success(self.account_data.email, self.account_data.account_password)
@@ -463,6 +480,14 @@ class Bot:
                         await self.handle_invalid_account(self.account_data.email, self.account_data.account_password, "unverified")
                         return
 
+                    elif error.error_type == APIErrorType.TOKEN_EXPIRED:
+                        logger.warning(f"Account: {self.account_data.email} | Token expired, refreshing..")
+
+                        if await self._refresh_token(db_account_value, api):
+                            logger.success(f"Account: {self.account_data.email} | Token refreshed | Retrying in {config.attempts_and_delay_settings.error_delay} seconds")
+                            await asyncio.sleep(config.attempts_and_delay_settings.error_delay)
+                            continue
+
                     logger.error(f"Account: {self.account_data.email} | Error occurred while claiming daily reward (APIError): {error} | Skipped until next cycle")
 
             except Exception as error:
@@ -497,6 +522,7 @@ class Bot:
 
                 profile_info = await api.profile_info()
                 profile_info["account_password"] = db_account_value.account_password
+                await self._refresh_token(db_account_value, api)
                 logger.success(f"Account: {self.account_data.email} | Stats exported")
                 return operation_success(self.account_data.email, profile_info)
 
@@ -509,6 +535,14 @@ class Bot:
                     if error.error_type == APIErrorType.UNVERIFIED_EMAIL:
                         await self.handle_invalid_account(self.account_data.email, self.account_data.account_password, "unverified")
                         return None
+
+                    elif error.error_type == APIErrorType.TOKEN_EXPIRED:
+                        logger.warning(f"Account: {self.account_data.email} | Token expired, refreshing..")
+
+                        if await self._refresh_token(db_account_value, api):
+                            logger.success(f"Account: {self.account_data.email} | Token refreshed | Retrying in {config.attempts_and_delay_settings.error_delay} seconds")
+                            await asyncio.sleep(config.attempts_and_delay_settings.error_delay)
+                            continue
 
                     logger.error(f"Account: {self.account_data.email} | Error occurred while exporting stats (APIError): {error} | Skipped permanently")
                     return operation_failed(self.account_data.email, {})
@@ -594,6 +628,14 @@ class Bot:
                     if error.error_type == APIErrorType.UNVERIFIED_EMAIL:
                         await self.handle_invalid_account(self.account_data.email, self.account_data.account_password, "unverified")
                         return None
+
+                    elif error.error_type == APIErrorType.TOKEN_EXPIRED:
+                        logger.warning(f"Account: {self.account_data.email} | Token expired, refreshing..")
+
+                        if await self._refresh_token(db_account_value, api):
+                            logger.success(f"Account: {self.account_data.email} | Token refreshed | Retrying in {config.attempts_and_delay_settings.error_delay} seconds")
+                            await asyncio.sleep(config.attempts_and_delay_settings.error_delay)
+                            continue
 
                     logger.error(f"Account: {self.account_data.email} | Error occurred while farm (APIError): {error} | Skipped until next cycle")
 

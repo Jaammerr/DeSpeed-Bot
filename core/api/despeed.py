@@ -57,6 +57,7 @@ class APIClient:
         headers: dict = None,
         cookies: dict = None,
         verify: bool = True,
+        return_full_response: bool = False,
         max_retries: int = 2,
         retry_delay: float = 3.0,
     ) -> dict | Response:
@@ -91,15 +92,15 @@ class APIClient:
                     if response.status_code == 403 and "403 Forbidden" in response.text:
                         raise ProxyForbidden(f"Proxy forbidden - {response.status_code}")
 
-                    elif response.status_code == 403:
-                        raise ServerError(f"Response forbidden - 403: {response.text[:200]}")
-
                     if response.status_code in (500, 502, 503, 504):
                         raise ServerError(f"Server error - {response.status_code}")
 
                     try:
                         response_json = response.json()
                         await self._verify_response(response_json)
+                        if return_full_response:
+                            return response
+
                         return response_json
                     except json.JSONDecodeError:
                         raise ServerError(f"Failed to decode response, most likely server error")
@@ -171,7 +172,7 @@ class DespeedAPI(APIClient):
         )
 
 
-    async def login(self, email_or_username: str, password: str, hcaptcha_token: str) -> str:
+    async def login(self, email_or_username: str, password: str, hcaptcha_token: str) -> tuple[str, str]:
         headers = {
             'accept': 'application/json, text/plain, */*',
             'accept-language': 'en-US,en;q=0.9,ru;q=0.8',
@@ -192,9 +193,41 @@ class DespeedAPI(APIClient):
             method="/auth/login",
             json_data=json_data,
             headers=headers,
+            return_full_response=True,
         )
 
-        return response["data"]["accessToken"]
+        access_token = response.json()["data"]["accessToken"]
+        refresh_token = response.cookies.get("refreshToken")
+
+        return access_token, refresh_token
+
+    async def refresh_token(self, refresh_token: str) -> tuple[str, str]:
+        cookies = {
+            'refreshToken': refresh_token,
+        }
+
+        headers = {
+            'accept': 'application/json, text/plain, */*',
+            'accept-language': 'en-US,en;q=0.9,ru;q=0.8',
+            'content-type': 'application/json',
+            'origin': 'https://app.despeed.net',
+            'referer': 'https://app.despeed.net/',
+            'user-agent': self.user_agent,
+        }
+
+        response = await self.send_request(
+            request_type="POST",
+            method="/auth/refresh-token",
+            headers=headers,
+            cookies=cookies,
+            return_full_response=True,
+        )
+
+        access_token = response.json()["data"]["accessToken"]
+        refresh_token = response.cookies.get("refreshToken")
+        self.access_token = access_token
+
+        return access_token, refresh_token
 
     @require_access_token
     async def profile_info(self) -> dict:
@@ -309,16 +342,9 @@ class DespeedAPI(APIClient):
         return response["data"]
 
     async def request_latitude_and_logitude(self) -> tuple[float, float]:
-        headers = {
-            'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
-            'accept-language': 'en-US,en;q=0.9,ru;q=0.8',
-            'user-agent': self.user_agent,
-        }
-
         response = await self.send_request(
             request_type="GET",
             url="https://ipinfo.io/json",
-            headers=headers,
             verify=False,
         )
 
@@ -327,7 +353,19 @@ class DespeedAPI(APIClient):
             latitude, longitude = data["loc"].split(",")
             return float(latitude), float(longitude)
         else:
-            raise APIError(f"Failed to get location data: {response.status_code}")
+            response = await self.send_request(
+                request_type="GET",
+                url="https://ipwho.is/",
+                verify=False,
+            )
+            if response.status_code == 200:
+                data = response.json()
+                latitude = data["latitude"]
+                longitude = data["longitude"]
+                return float(latitude), float(longitude)
+            else:
+                raise ServerError(f"Failed to get location data after 2 attempts: {response.status_code}")
+
 
 
     @require_access_token

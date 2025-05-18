@@ -1,14 +1,20 @@
 import asyncio
 
 from core.captcha.solvium import SolviumCaptchaSolver
+from core.captcha.base import TwoCaptchaSolver, AntiCaptchaSolver
 from utils import load_config, FileOperations, ProxyManager
 
 config = load_config()
 captcha_solver = SolviumCaptchaSolver(
     api_key=config.captcha_settings.solvium_captcha_api_key,
     max_attempts=config.captcha_settings.max_captcha_solving_time // 3
+) if config.captcha_settings.captcha_solver == "solvium" else TwoCaptchaSolver(
+    api_key=config.captcha_settings.two_captcha_api_key,
+    max_attempts=config.captcha_settings.max_captcha_solving_time // 3
+) if config.captcha_settings.captcha_solver == "2captcha" else AntiCaptchaSolver(
+    api_key=config.captcha_settings.anti_captcha_api_key,
+    max_attempts=config.captcha_settings.max_captcha_solving_time // 3
 )
-
 
 file_operations = FileOperations()
 semaphore = asyncio.Semaphore(config.application_settings.threads)
